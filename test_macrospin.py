@@ -1,6 +1,6 @@
+from fenics import *
 import numpy as np
 import matplotlib.pyplot as plt
-import dolfin as df
 from micromagnetictestcases.macrospin.analytic_solution import macrospin_analytic_solution
 
 # Material parameters
@@ -27,27 +27,25 @@ nx = ny = 10
 nz = 1
 
 # create mesh
-p1 = df.Point(0, 0, 0)
-p2 = df.Point(d, d, thickness)
-mesh = df.BoxMesh(p1, p2, nx, ny, nz)
+p1 = Point(0, 0, 0)
+p2 = Point(d, d, thickness)
+mesh = BoxMesh(p1, p2, nx, ny, nz)
 
-# define function space
-V = df.VectorFunctionSpace(mesh, "CG", degree=1, dim=3)
+# Set up mixed function space
+VV = VectorFunctionSpace(mesh, "CG", 1)
+VS = FunctionSpace(mesh, "CG", 1)
+V = VV * VS
 
 # define initial M and normalise
-m = df.Constant((1, 0, 0))
-m = df.project(m / df.sqrt(df.dot(m, m)), V)
-# m = df.project(m / df.sqrt(df.dot(m, m)), V)
-Heff = H * df.Constant((0, 0, 1))
-# Heff = df.project(Heff / df.sqrt(df.dot(Heff, Heff)), V)
+m = Constant((1, 0, 0))
+m = project(m / sqrt(dot(m, m)), V)
+Heff = H * Constant((0, 0, 1))
 
 # define dmdt, test and trial functions
-dmdt = df.Function(V)
-v = df.TrialFunction(V)
-w = df.TestFunction(V)
+dmdt = Function(V)
+(v, lam) = TrialFunction(V)
+(w, sigma) = TestFunction(V)
 
-# define the exchange field
-# f_ex = df.Constant(2*A/(mu0*Ms))
 
 # results for m_x at times t_array in
 mx_simulation = np.zeros(t_array.shape)
@@ -56,12 +54,16 @@ for i, t in enumerate(t_array):
 
     mx_simulation[i] = m((0,0,0))[0]
 
-    a = df.inner(df.Constant(alpha)*v + df.cross(m, v), w)*df.dx
-    L = df.inner(gamma*Heff, w)*df.dx
-    df.solve(a == L, dmdt)
+    a = alpha*dot(v,w)*dx \
+        + dot(cross(m,v),w)*dx \
+        + sigma*inner(m,v)*dx \
+        + lam*inner(m,w)*dx
+    # a = df.inner(df.Constant(alpha)*v + df.cross(m, v), w)*df.dx
+    L = inner(gamma*Heff, w)*dx
+    solve(a == L, dmdt)
 
-    m += dmdt * df.Constant(dt)
-    m = df.project(m / df.sqrt(df.dot(m, m)), V)
+    m += dmdt * Constant(dt)
+    m = project(m / sqrt(dot(m, m)), V)
     
 
 ###################
