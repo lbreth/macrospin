@@ -1,4 +1,4 @@
-from dolfin import *
+from fenics import *
 import numpy as np
 import matplotlib.pyplot as plt
 from micromagnetictestcases.macrospin.analytic_solution import macrospin_analytic_solution
@@ -13,7 +13,7 @@ B = 0.1  # (T)
 mu0 = 4 * np.pi * 1e-7  # vacuum permeability
 H = B / mu0
 # meaningful time period is of order of nano seconds
-dt = 0.01e-9
+dt = 1e-12
 t_array = np.arange(0, 5e-9, dt)
 
 ############
@@ -31,45 +31,43 @@ p1 = Point(0, 0, 0)
 p2 = Point(d, d, thickness)
 mesh = BoxMesh(p1, p2, nx, ny, nz)
 
-# Set up mixed function space
-VV = VectorFunctionSpace(mesh, "CG", 1, dim=3)
-VS = FunctionSpace(mesh, "CG", 1)
-#V = VV * VS
-
-VFM = VectorElement("CG", mesh.ufl_cell(), 1, dim=3)
-SFM = VectorElement("CG", mesh.ufl_cell(), 1, dim=1)
-
-V = FunctionSpace(mesh, MixedElement([VFM, SFM]))
+# define function space for magnetization
+M = VectorFunctionSpace(mesh, "CG", 1, dim=3)
 
 # define initial M and normalise
 m = Constant((1, 0, 0))
-m = project(m / sqrt(dot(m, m)), VV)
 Heff = H * Constant((0, 0, 1))
 
-# define dmdt, test and trial functions
-dmdt = Function(VV)
-(v, lam) = TrialFunction(V)
-(w, sigma) = TestFunction(V)
+# define initial value
+u_n = interpolate(m, M)
 
+# define variational problem
+u = TrialFunction(M)
+v = TestFunction(M)
 
-# results for m_x at times t_array in
+F = dot(u, v)*dx + dt*gamma*dot(cross(u, Heff), v)*dx - alpha*dot(cross(u, u_n), v)*dx - dot(u_n, v)*dx
+a, L = lhs(F), rhs(F)
+
+# time stepping
+u = Function(M)
+t = 0
 mx_simulation = np.zeros(t_array.shape)
 
 for i, t in enumerate(t_array):
 
-    mx_simulation[i] = m((0,0,0))[0]
+    mx_simulation[i] = u((0,0,0))[0]
+    t += dt
+    solve(a == L, u)
 
-    a = alpha*dot(v,w)*dx \
-        + dot(cross(m,v),w)*dx \
-        + sigma*inner(m,v)*dx \
-        + lam*inner(m,w)*dx
-    # a = df.inner(df.Constant(alpha)*v + df.cross(m, v), w)*df.dx
-    L = inner(gamma*Heff, w)*dx
-    solve(a == L, dmdt)
+    # plot solution
+    # plot(u)
 
-    m += dmdt * Constant(dt)
-    m = project(m / sqrt(dot(m, m)), V)
-    
+    # update previous solution
+    u_n.assign(u)
+
+# Hold plot
+# interactive()
+
 
 ###################
 # Analytic solution
